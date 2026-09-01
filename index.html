@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>線上簽到系統</title>
+  <style>
+    body { font-family: Arial, "Microsoft JhengHei", sans-serif; max-width: 600px; margin: 30px auto; padding: 20px; background-color: #f5f5f5; }
+    .card { background: #ffffff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    h2 { margin-top: 0; color: #333; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; font-weight: bold; margin-bottom: 8px; }
+    select { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
+    .radio-group { display: flex; align-items: center; gap: 15px; }
+    .radio-option { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+    .note { color: #d9534f; font-size: 14px; margin-left: 5px; }
+    .btn-submit { width: 100%; background-color: #007bff; color: white; border: none; padding: 12px; font-size: 16px; border-radius: 4px; cursor: pointer; }
+    .btn-submit:hover { background-color: #0056b3; }
+    .btn-submit:disabled { background-color: #cccccc; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>線上簽到表</h2>
+    <form id="checkinForm">
+      <div class="form-group">
+        <label for="classSelect">1. 請選擇班級：</label>
+        <select id="classSelect" required>
+          <option value="">-- 請選擇班級 --</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>2. 是否為本人到場？</label>
+        <div class="radio-group">
+          <label class="radio-option">
+            <input type="radio" name="isSelf" value="是" required> 是
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="isSelf" value="否"> 否
+            <span class="note">（若非本人到場請向學生會工作人員報備）</span>
+          </label>
+        </div>
+      </div>
+
+      <button type="submit" id="submitBtn" class="btn-submit">送出簽到</button>
+    </form>
+  </div>
+
+  <script>
+    // ⚠️ 替換為你的 Google Apps Script 網頁應用程式網址
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbwBirzqeq0mHnaN0ZNJ2kmv5Pz9LDiieM0czAo8bNiIn3ogvdsaW4CU0uDyi3G0Ds370w/exec' ;
+
+    const classSelect = document.getElementById('classSelect');
+    const checkinForm = document.getElementById('checkinForm');
+    const submitBtn = document.getElementById('submitBtn');
+
+    // 動態生成班級選項
+    const grades = [1, 2, 3];
+    grades.forEach(grade => {
+      for (let i = 1; i <= 23; i++) {
+        const classNum = `${grade}${i < 10 ? '0' : ''}${i}`;
+        const option = document.createElement('option');
+        option.value = `${classNum}班`;
+        option.textContent = `${classNum}班`;
+        classSelect.appendChild(option);
+      }
+    });
+
+    // 表單送出處理
+    checkinForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const selectedClass = classSelect.value;
+      const isSelfRadio = document.querySelector('input[name="isSelf"]:checked');
+      const isSelf = isSelfRadio ? isSelfRadio.value : '';
+
+      // 防代簽邏輯
+      if (isSelf === '否') {
+        alert('⚠️ 非本人到場不可直接線上簽到！\n請先前往學生會服務台向工作人員報備與登記。');
+        return;
+      }
+
+      // 取得現有簽到過記錄 (本機快取防刷)
+      let submittedClasses = JSON.parse(localStorage.getItem('my_submitted_classes')) || [];
+      if (submittedClasses.includes(selectedClass)) {
+        alert(`⚠️ ${selectedClass} 此裝置已簽到過，請勿重複送出！`);
+        return;
+      }
+
+      // 取得時間
+      const now = new Date();
+      const timeString = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+      // 按鈕狀態變更為傳送中
+      submitBtn.disabled = true;
+      submitBtn.textContent = '傳送中...';
+
+      // 送出資料至 Google Sheet
+      fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          time: timeString,
+          className: selectedClass,
+          isSelf: isSelf
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert(`✅ ${selectedClass} 簽到成功！`);
+          // 紀錄至本機防刷
+          submittedClasses.push(selectedClass);
+          localStorage.setItem('my_submitted_classes', JSON.stringify(submittedClasses));
+          checkinForm.reset();
+        } else {
+          alert('❌ 簽到失敗：' + data.message);
+        }
+      })
+      .catch(err => {
+        alert('❌ 網路連線錯誤，請重試！');
+        console.error(err);
+      })
+      .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '送出簽到';
+      });
+    });
+  </script>
+</body>
+</html>
