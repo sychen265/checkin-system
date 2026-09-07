@@ -10,36 +10,59 @@
     h2 { margin-top: 0; color: #333; }
     .form-group { margin-bottom: 20px; }
     label { display: block; font-weight: bold; margin-bottom: 8px; }
-    select { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
+    select, input[type="text"] { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
     .radio-group { display: flex; align-items: center; gap: 15px; }
     .radio-option { display: flex; align-items: center; gap: 5px; cursor: pointer; }
     .note { color: #d9534f; font-size: 14px; margin-left: 5px; }
     .btn-submit { width: 100%; background-color: #007bff; color: white; border: none; padding: 12px; font-size: 16px; border-radius: 4px; cursor: pointer; }
     .btn-submit:hover { background-color: #0056b3; }
     .btn-submit:disabled { background-color: #cccccc; cursor: not-allowed; }
+    
+    /* 動態顯示/隱藏動畫區塊 */
+    .hidden { display: none; }
   </style>
 </head>
 <body>
 
   <div class="card">
-    <h2>線上簽到系統</h2>
+    <h2>線上簽到表</h2>
     <form id="checkinForm">
+      
+      <!-- 1. 身份選擇 -->
       <div class="form-group">
-        <label for="classSelect">1. 請選擇班級：</label>
-        <select id="classSelect" required>
-          <option value="">-- 請選擇班級 --</option>
+        <label for="identitySelect">1. 請選擇身份：</label>
+        <select id="identitySelect" required>
+          <option value="一般學生" selected>一般學生</option>
+          <option value="老師">老師</option>
+          <option value="學生會">學生會工作人員</option>
         </select>
       </div>
 
+      <!-- 2. 姓名輸入框（預設隱藏，選擇老師/學生會時顯示） -->
+      <div class="form-group hidden" id="nameGroup">
+        <label for="nameInput">請輸入姓名：<span style="color:red;">*</span></label>
+        <input type="text" id="nameInput" placeholder="請輸入您的真實姓名">
+      </div>
+
+      <!-- 3. 班級選單 -->
       <div class="form-group">
-        <label>2. 是否為本人到場？</label>
+        <label for="classSelect">2. 請選擇班級：</label>
+        <select id="classSelect" required>
+          <option value="">-- 請選擇班級 --</option>
+          <option value="無/不適用">無 / 不適用（老師或學生會）</option>
+        </select>
+      </div>
+
+      <!-- 4. 是否為本人到場 -->
+      <div class="form-group">
+        <label>3. 是否為本人到場？</label>
         <div class="radio-group">
           <label class="radio-option">
             <input type="radio" name="isSelf" value="是" required> 是
           </label>
           <label class="radio-option">
             <input type="radio" name="isSelf" value="否"> 否
-            <span class="note">（若非本人到場請向學生會成員報備）</span>
+            <span class="note">（若非本人到場請向學生會工作人員報備）</span>
           </label>
         </div>
       </div>
@@ -49,14 +72,17 @@
   </div>
 
   <script>
-    // ⚠️ 替換為你的 Google Apps Script 網頁應用程式網址
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbwBirzqeq0mHnaN0ZNJ2kmv5Pz9LDiieM0czAo8bNiIn3ogvdsaW4CU0uDyi3G0Ds370w/exec' ;
+    // ⚠️ 請替換為你的 Google Apps Script Web 應用程式網址
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbwBirzqeq0mHnaN0ZNJ2kmv5Pz9LDiieM0czAo8bNiIn3ogvdsaW4CU0uDyi3G0Ds370w/exec';
 
+    const identitySelect = document.getElementById('identitySelect');
+    const nameGroup = document.getElementById('nameGroup');
+    const nameInput = document.getElementById('nameInput');
     const classSelect = document.getElementById('classSelect');
     const checkinForm = document.getElementById('checkinForm');
     const submitBtn = document.getElementById('submitBtn');
 
-    // 動態生成班級選項
+    // 1. 動態生成班級選項 (101~123, 201~223, 301~323)
     const grades = [1, 2, 3];
     grades.forEach(grade => {
       for (let i = 1; i <= 23; i++) {
@@ -68,10 +94,25 @@
       }
     });
 
-    // 表單送出處理
+    // 2. 監聽身份變更：選擇「老師」或「學生會」時顯示姓名輸入框，並設為必填
+    identitySelect.addEventListener('change', function() {
+      const value = this.value;
+      if (value === '老師' || value === '學生會') {
+        nameGroup.classList.remove('hidden');
+        nameInput.required = true;
+      } else {
+        nameGroup.classList.add('hidden');
+        nameInput.required = false;
+        nameInput.value = ''; // 切換回一般學生時清空輸入內容
+      }
+    });
+
+    // 3. 表單送出處理
     checkinForm.addEventListener('submit', function(e) {
       e.preventDefault();
 
+      const identity = identitySelect.value;
+      const userName = (identity === '老師' || identity === '學生會') ? nameInput.value.trim() : '無 (一般學生)';
       const selectedClass = classSelect.value;
       const isSelfRadio = document.querySelector('input[name="isSelf"]:checked');
       const isSelf = isSelfRadio ? isSelfRadio.value : '';
@@ -82,27 +123,31 @@
         return;
       }
 
-      // 取得現有簽到過記錄 (本機快取防刷)
-      let submittedClasses = JSON.parse(localStorage.getItem('my_submitted_classes')) || [];
-      if (submittedClasses.includes(selectedClass)) {
-        alert(`⚠️ ${selectedClass} 此裝置已簽到過，請勿重複送出！`);
-        return;
+      // 檢查本機防重複簽到（一般學生以班級為單位阻擋；老師/學生會允許同單位不同人簽到）
+      if (identity === '一般學生') {
+        let submittedClasses = JSON.parse(localStorage.getItem('my_submitted_classes')) || [];
+        if (submittedClasses.includes(selectedClass)) {
+          alert(`⚠️ ${selectedClass} 此裝置已簽到過，請勿重複送出！`);
+          return;
+        }
       }
 
-      // 取得時間
+      // 取得時間格式
       const now = new Date();
       const timeString = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-      // 按鈕狀態變更為傳送中
+      // 按鈕切換為傳送中
       submitBtn.disabled = true;
       submitBtn.textContent = '傳送中...';
 
-      // 送出資料至 Google Sheet
+      // 傳送資料給 Google Apps Script
       fetch(GAS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
           time: timeString,
+          identity: identity,
+          userName: userName,
           className: selectedClass,
           isSelf: isSelf
         })
@@ -110,11 +155,17 @@
       .then(res => res.json())
       .then(data => {
         if (data.status === 'success') {
-          alert(`✅ ${selectedClass} 簽到成功！`);
-          // 紀錄至本機防刷
-          submittedClasses.push(selectedClass);
-          localStorage.setItem('my_submitted_classes', JSON.stringify(submittedClasses));
+          alert(`✅ 簽到成功！\n身份：${identity}\n${userName !== '無 (一般學生)' ? '姓名：' + userName + '\n' : ''}班級：${selectedClass}`);
+          
+          // 若是一般學生，記錄班級至 LocalStorage
+          if (identity === '一般學生') {
+            let submittedClasses = JSON.parse(localStorage.getItem('my_submitted_classes')) || [];
+            submittedClasses.push(selectedClass);
+            localStorage.setItem('my_submitted_classes', JSON.stringify(submittedClasses));
+          }
+          
           checkinForm.reset();
+          nameGroup.classList.add('hidden'); // 重置後隱藏姓名框
         } else {
           alert('❌ 簽到失敗：' + data.message);
         }
